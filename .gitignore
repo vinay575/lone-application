@@ -1,0 +1,12 @@
+node_modules
+dist
+server/data/db.json
+server/uploads
+.env
+.env.local
+*.log
+.DS_Store
+.devlog.txt
+smoke-test.mjs
+db-probe.mjs
+db-test.mjs

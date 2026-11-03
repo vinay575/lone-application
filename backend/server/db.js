@@ -18,7 +18,9 @@ export const pool = mysql.createPool({
   password: decodeURIComponent(parsed.password),
   database: parsed.pathname.replace(/^\//, '') || 'sys',
   waitForConnections: true,
-  connectionLimit: 10,
+  // Serverless platforms run many short-lived instances; keep the pool small
+  // there so a traffic spike does not exhaust the database connection limit.
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT) || (process.env.VERCEL ? 2 : 10),
   queueLimit: 0,
   connectTimeout: 20000,
   // TiDB Cloud requires TLS; validate certificates against system CAs.
@@ -29,7 +31,7 @@ export const pool = mysql.createPool({
   // server/firewall drops them, which otherwise surfaces as ECONNRESET.
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000,
-  maxIdle: 4,
+  maxIdle: process.env.VERCEL ? 1 : 4,
   idleTimeout: 60000,
 });
 

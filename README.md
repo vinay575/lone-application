@@ -23,6 +23,9 @@ lone/
 └── package.json       npm workspaces + combined dev scripts
 ```
 
+> Deploying to Vercel? See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for the
+> one-project setup, required environment variables, and serverless caveats.
+
 ## 2. Quick start
 
 ```bash

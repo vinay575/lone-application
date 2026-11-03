@@ -2,7 +2,6 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import {
   findApplicationById,
   listApplicationsByUser,
@@ -19,10 +18,7 @@ import {
   one,
 } from '../db.js';
 import { requireAuth, validate } from '../middleware.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+import { UPLOAD_DIR } from '../paths.js';
 
 const DOC_FIELDS = ['pan', 'aadhaar', 'photo'];
 const ALLOWED_EXT = new Set(['.png', '.jpg', '.jpeg', '.pdf', '.txt', '.webp']);

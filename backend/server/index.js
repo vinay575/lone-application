@@ -71,7 +71,9 @@ app.use('/api/admin', adminRoutes);
 // Serve the built React app (SPA) so the same origin handles both the UI and
 // /api — required on hosts like Render where traffic only reaches this server.
 // In local dev the Vite server serves the UI instead and dist/ may not exist.
-const DIST_DIR = path.join(__dirname, '..', 'dist');
+// The frontend lives in ../frontend, so its production build is at
+// frontend/dist relative to the repository root.
+const DIST_DIR = path.resolve(__dirname, process.env.FRONTEND_DIST || '../../frontend/dist');
 if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
   app.use((req, res, next) => {

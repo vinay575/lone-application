@@ -45,6 +45,7 @@ export default function AdminPayments() {
               <th>Plan</th>
               <th>Amount</th>
               <th>Method</th>
+              <th>UTR</th>
               <th>Status</th>
               <th>Date</th>
             </tr>
@@ -58,12 +59,13 @@ export default function AdminPayments() {
                 <td>{p.planCode}</td>
                 <td>{formatINR(p.amount)}</td>
                 <td>{p.method}</td>
+                <td>{p.utr || '—'}</td>
                 <td><span className="badge badge-done">Paid</span></td>
                 <td>{formatDateTime(p.createdAt)}</td>
               </tr>
             ))}
             {data.payments.length === 0 && (
-              <tr><td colSpan={8} className="center text-muted">No payments yet.</td></tr>
+              <tr><td colSpan={9} className="center text-muted">No payments yet.</td></tr>
             )}
           </tbody>
         </table>

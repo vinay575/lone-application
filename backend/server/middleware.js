@@ -94,6 +94,12 @@ export function validate(body, rules) {
     if (rule.type === 'pincode' && !/^\d{6}$/.test(String(value))) {
       errors[field] = rule.message || 'Enter a valid 6-digit PIN code.';
     }
+    if (rule.type === 'ifsc' && !/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(String(value).trim())) {
+      errors[field] = rule.message || 'Enter a valid 11-character IFSC code (e.g. HDFC0001234).';
+    }
+    if (rule.type === 'account' && !/^\d{4,20}$/.test(String(value).replace(/\s+/g, ''))) {
+      errors[field] = rule.message || 'Enter a valid account number (4-20 digits).';
+    }
   }
   return errors;
 }

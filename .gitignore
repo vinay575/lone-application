@@ -1,12 +1,19 @@
 node_modules
+**/node_modules
+
+# Production builds
+frontend/dist
 dist
-server/data/db.json
-server/uploads
+
+# Runtime/private data
+backend/server/uploads
+frontend/.env
+backend/.env
 .env
 .env.local
+**/.env.local
+
+# Logs and scratch files
 *.log
-.DS_Store
 .devlog.txt
-smoke-test.mjs
-db-probe.mjs
-db-test.mjs
+.DS_Store

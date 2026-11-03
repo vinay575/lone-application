@@ -139,6 +139,24 @@ export default function AdminApplicationDetail() {
             </div>
           </div>
           <div className="card">
+            <h3>Bank account</h3>
+            {app.bank?.accountNumber || app.bank?.ifsc ? (
+              <div className="form-grid text-sm">
+                <div><span className="text-muted">Holder:</span> {app.bank?.accountHolderName || '—'}</div>
+                <div><span className="text-muted">Bank:</span> {app.bank?.bankName || '—'}</div>
+                <div>
+                  <span className="text-muted">A/C:</span>{' '}
+                  {app.bank?.accountNumber
+                    ? `XXXX${String(app.bank.accountNumber).slice(-4)}`
+                    : '—'}
+                </div>
+                <div><span className="text-muted">IFSC:</span> {app.bank?.ifsc || '—'}</div>
+              </div>
+            ) : (
+              <div className="text-sm text-muted">Not provided yet.</div>
+            )}
+          </div>
+          <div className="card">
             <h3>Document uploads</h3>
             <div className="row">
               {['pan', 'aadhaar', 'photo'].map((k) => (

@@ -161,7 +161,7 @@ export default function Home() {
               </div>
               <div className="hero-card-row">
                 <span>4. Complete payment</span>
-                <span className="text-muted text-sm">UPI · Card · Netbanking</span>
+                <span className="text-muted text-sm">UPI QR · PhonePe · GPay · Paytm</span>
               </div>
               <div className="hero-card-row">
                 <span>5. Track your status</span>

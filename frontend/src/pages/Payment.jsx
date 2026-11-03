@@ -1,16 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ShieldCheck, CheckCircle2, ArrowLeft, CreditCard, Smartphone, Landmark, Lock } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, ArrowLeft, Lock } from 'lucide-react';
 import Loader from '../components/Loader.jsx';
+import UpiScanner from '../components/UpiScanner.jsx';
 import { api, ApiError } from '../lib/api.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { formatINR } from '../lib/format.js';
-
-const METHODS = [
-  { id: 'upi', label: 'UPI', hint: 'Pay with any UPI app', icon: Smartphone },
-  { id: 'netbanking', label: 'Net Banking', hint: 'All major banks supported', icon: Landmark },
-  { id: 'card', label: 'Credit / Debit Card', hint: 'Visa, Mastercard, RuPay', icon: CreditCard },
-];
 
 export default function Payment() {
   const { applicationId } = useParams();
@@ -20,9 +15,11 @@ export default function Payment() {
   const [app, setApp] = useState(null);
   const [plans, setPlans] = useState([]);
   const [planCode, setPlanCode] = useState('A');
-  const [method, setMethod] = useState('upi');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
+  const [verify, setVerify] = useState(false);
+  const [utr, setUtr] = useState('');
+  const [utrError, setUtrError] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -46,18 +43,36 @@ export default function Payment() {
   const plan = plans.find((p) => p.code === planCode);
   const amount = plan?.demoUnlockAmount || 0;
 
+  const startVerify = () => {
+    if (!plan) return;
+    setUtrError(null);
+    setVerify(true);
+  };
+
   const pay = async () => {
+    const value = utr.replace(/\s+/g, '');
+    if (!/^\d{9,16}$/.test(value)) {
+      setUtrError('UTR is usually 9-16 digits, shown in your UPI app transaction details.');
+      return;
+    }
     setBusy(true);
+    setUtrError(null);
     try {
       const d = await api.post('/customer/payments/simulate', {
         applicationId: Number(applicationId),
         planCode,
-        method,
+        method: 'upi',
+        utr: value,
       });
       setResult(d);
-      toast.success('Payment successful.');
+      toast.success('Payment verified successfully.');
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Payment failed.');
+      if (err instanceof ApiError) {
+        setUtrError(err.fields?.utr || null);
+        toast.error(err.message);
+      } else {
+        toast.error('Could not verify the payment.');
+      }
     } finally {
       setBusy(false);
     }
@@ -81,6 +96,7 @@ export default function Payment() {
             <div className="receipt">
               <div className="row between"><span className="text-sm text-muted">Reference</span><strong>{result.receipt || result.reference || '—'}</strong></div>
               <div className="row between"><span className="text-sm text-muted">Amount paid</span><strong>{formatINR(amount)}</strong></div>
+              <div className="row between"><span className="text-sm text-muted">UTR</span><strong>{result.payment?.utr || '—'}</strong></div>
               <div className="row between"><span className="text-sm text-muted">Application</span><strong>{app.refNumber}</strong></div>
             </div>
             <p className="text-sm text-muted" style={{ marginTop: '1rem', marginBottom: 0 }}>
@@ -91,7 +107,15 @@ export default function Payment() {
               <Link to="/dashboard" className="btn btn-teal">
                 Go to dashboard
               </Link>
-              <button className="btn btn-ghost" onClick={() => setResult(null)}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  setResult(null);
+                  setVerify(false);
+                  setUtr('');
+                  setUtrError(null);
+                }}
+              >
                 Back to checkout
               </button>
             </div>
@@ -143,38 +167,80 @@ export default function Payment() {
         </div>
 
         <div className="card">
-          <h3 style={{ fontSize: '1rem' }}>Payment method</h3>
-          <div className="pay-methods">
-            {METHODS.map((m) => {
-              const Icon = m.icon;
-              const active = method === m.id;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={`pay-method ${active ? 'active' : ''}`}
-                  onClick={() => setMethod(m.id)}
-                  aria-pressed={active}
-                >
-                  <Icon size={20} />
-                  <span>
-                    <strong>{m.label}</strong>
-                    <small className="text-muted">{m.hint}</small>
-                  </span>
-                  <span className="radio-dot" aria-hidden="true" />
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-sm text-muted" style={{ marginTop: '0.6rem' }}>
-            You'll review and confirm the payment on the next screen. We never ask for your card
-            number, CVV, UPI PIN or banking password on this site.
-          </p>
+          <h3 style={{ fontSize: '1rem' }}>{verify ? 'Verify your payment' : 'Pay with UPI'}</h3>
 
-          <button className="btn btn-teal btn-block btn-lg" onClick={pay} disabled={busy || !plan}>
-            <ShieldCheck size={18} />
-            {busy ? 'Processing…' : `Pay ${formatINR(amount)}`}
-          </button>
+          {!verify ? (
+            <>
+              <p className="text-sm text-muted" style={{ marginTop: 0 }}>
+                Scan the QR code with PhonePe, Google Pay or Paytm — the amount is filled in
+                automatically. We never ask for your card number, CVV, UPI PIN or banking password
+                on this site.
+              </p>
+
+              {plan && (
+                <UpiScanner
+                  amount={amount}
+                  planName={plan.name}
+                  txnRef={`LL-${applicationId}-${planCode}`}
+                  reference={app.refNumber}
+                />
+              )}
+
+              <button className="btn btn-teal btn-block btn-lg" onClick={startVerify} disabled={!plan}>
+                <ShieldCheck size={18} />
+                {`I've paid ${formatINR(amount)} — Confirm payment`}
+              </button>
+            </>
+          ) : (
+            <div className="fade-up">
+              <div className="alert alert-info">
+                Open your UPI app (PhonePe / GPay / Paytm) → <strong>History</strong> → select the
+                payment of <strong>{formatINR(amount)}</strong> → copy the{' '}
+                <strong>UTR / Transaction ID</strong> and paste it below. The reference is usually
+                9-16 digits.
+              </div>
+              <div className="field full" style={{ marginTop: '0.8rem' }}>
+                <label htmlFor="utr">
+                  UTR / Transaction reference <span className="req">*</span>
+                </label>
+                <input
+                  id="utr"
+                  name="utr"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={utr}
+                  placeholder="e.g. 415823697412"
+                  className={utrError ? 'invalid' : ''}
+                  onChange={(e) => {
+                    setUtr(e.target.value);
+                    setUtrError(null);
+                  }}
+                />
+                {utrError ? (
+                  <span className="err">{utrError}</span>
+                ) : (
+                  <span className="hint">Found under the transaction details in your UPI app.</span>
+                )}
+              </div>
+              <div className="row" style={{ gap: '0.6rem', marginTop: '1rem' }}>
+                <button className="btn btn-teal" onClick={pay} disabled={busy || !plan}>
+                  <ShieldCheck size={16} />
+                  {busy ? 'Verifying…' : 'Verify & complete payment'}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setVerify(false);
+                    setUtrError(null);
+                  }}
+                  disabled={busy}
+                >
+                  <ArrowLeft size={16} /> Back to QR
+                </button>
+              </div>
+            </div>
+          )}
+
           <p className="center text-sm text-muted" style={{ marginTop: '0.8rem', marginBottom: 0 }}>
             Secured with 256-bit encryption · Sandbox mode, no live funds are transferred.
           </p>

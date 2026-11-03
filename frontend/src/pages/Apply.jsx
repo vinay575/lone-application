@@ -8,8 +8,9 @@ import {
   FileText,
   Camera,
   CreditCard,
-  CheckCircle2,
   Sparkles,
+  ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import Stepper from '../components/Stepper.jsx';
 import Field from '../components/Field.jsx';
@@ -20,13 +21,14 @@ import { useToast } from '../context/ToastContext.jsx';
 import { EMPLOYMENT_TYPES } from '../lib/constants.js';
 import { formatINR } from '../lib/format.js';
 
-const STEPS = ['Personal', 'Address', 'Employment', 'Loan', 'Documents', 'Review'];
+const STEPS = ['Personal', 'Address', 'Employment', 'Loan', 'Bank Details', 'Documents', 'Review'];
 
 const EMPTY = {
   personal: { fullName: '', dob: '', gender: '', mobile: '', email: '' },
   address: { line1: '', line2: '', city: '', state: '', pincode: '' },
   employment: { type: '', employerName: '', monthlyIncome: '' },
   loan: { requestedAmount: '', purpose: '', tenureMonths: '' },
+  bank: { accountHolderName: '', bankName: '', accountNumber: '', ifsc: '' },
 };
 
 function clientValidate(step, data) {
@@ -59,6 +61,16 @@ function clientValidate(step, data) {
     if (!amt || amt < 1000) e.requestedAmount = 'Enter an amount of at least ₹1,000.';
     if (!data.loan.purpose.trim()) e.purpose = 'Loan purpose is required.';
   }
+  if (step === 4) {
+    if (!data.bank.accountHolderName.trim()) e.accountHolderName = 'Account holder name is required.';
+    if (!data.bank.bankName.trim()) e.bankName = 'Bank name is required.';
+    if (!/^\d{4,20}$/.test(data.bank.accountNumber.replace(/\s+/g, ''))) {
+      e.accountNumber = 'Enter a valid account number (4-20 digits).';
+    }
+    if (!/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(data.bank.ifsc.trim())) {
+      e.ifsc = 'Enter a valid 11-character IFSC code (e.g. HDFC0001234).';
+    }
+  }
   return e;
 }
 
@@ -78,6 +90,7 @@ export default function Apply() {
   const [busy, setBusy] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [docs, setDocs] = useState({ pan: null, aadhaar: null, photo: null });
+  const [deleting, setDeleting] = useState(null);
   const [docBusy, setDocBusy] = useState(false);
 
   useEffect(() => {
@@ -119,8 +132,9 @@ export default function Apply() {
             address: { ...EMPTY.address, ...target.address },
             employment: { ...EMPTY.employment, ...target.employment, monthlyIncome: target.employment?.monthlyIncome ?? '' },
             loan: { ...EMPTY.loan, ...target.loan, requestedAmount: target.loan?.requestedAmount ?? '' },
+            bank: { ...EMPTY.bank, ...target.bank },
           });
-          if (target.status === 'Additional Information Required') setStep(4);
+          if (target.status === 'Additional Information Required') setStep(5);
         }
       } catch (err) {
         toast.error('Could not load the application form.');
@@ -142,7 +156,7 @@ export default function Apply() {
   const saveStep = async (silent = false, manageBusy = true) => {
     if (!app) return false;
     const stepErrors = clientValidate(step, data);
-    if (Object.keys(stepErrors).length && step < 4) {
+    if (Object.keys(stepErrors).length && step < 5) {
       setErrors(stepErrors);
       toast.error('Please fix the highlighted fields.');
       return false;
@@ -155,6 +169,14 @@ export default function Apply() {
     }
     if (step === 3) {
       payload.loan = { ...data.loan, requestedAmount: Number(data.loan.requestedAmount) || 0 };
+    }
+    if (step === 4) {
+      payload.bank = {
+        accountHolderName: data.bank.accountHolderName.trim(),
+        bankName: data.bank.bankName.trim(),
+        accountNumber: data.bank.accountNumber.replace(/\s+/g, ''),
+        ifsc: data.bank.ifsc.trim().toUpperCase(),
+      };
     }
     if (manageBusy) setBusy(true);
     try {
@@ -188,8 +210,16 @@ export default function Apply() {
     setStep((s) => Math.max(s - 1, 0));
   };
 
+  const docsLocked = ['Submitted', 'Under Review', 'Completed', 'Demo Completed'].includes(app?.status);
+
   const uploadDocs = async () => {
     if (!app) return;
+    if (docsLocked) {
+      const msg = 'Documents can only be changed while the application is still a draft.';
+      setErrors((e) => ({ ...e, documents: msg }));
+      toast.error(msg);
+      return;
+    }
     const fd = new FormData();
     let any = false;
     for (const key of ['pan', 'aadhaar', 'photo']) {
@@ -202,6 +232,24 @@ export default function Apply() {
       setErrors((e) => ({ ...e, documents: 'Add at least one document before continuing.' }));
       return;
     }
+    const maxSize = 2 * 1024 * 1024;
+    const allowed = ['png', 'jpg', 'jpeg', 'pdf', 'txt', 'webp'];
+    for (const key of ['pan', 'aadhaar', 'photo']) {
+      const f = docs[key];
+      if (!f) continue;
+      const ext = (f.name.split('.').pop() || '').toLowerCase();
+      let msg = null;
+      if (!allowed.includes(ext)) {
+        msg = `"${f.name}" is not supported. Please use a PNG, JPG, WEBP, PDF or TXT file.`;
+      } else if (f.size > maxSize) {
+        msg = `"${f.name}" is larger than 2 MB. Please compress or re-scan it and try again.`;
+      }
+      if (msg) {
+        setErrors((e) => ({ ...e, documents: msg }));
+        toast.error(msg);
+        return;
+      }
+    }
     setDocBusy(true);
     try {
       const d = await api.upload(`/customer/applications/${app.id}/documents`, fd);
@@ -212,6 +260,21 @@ export default function Apply() {
       toast.error(err instanceof ApiError ? err.message : 'Upload failed.');
     } finally {
       setDocBusy(false);
+    }
+  };
+
+  const removeDoc = async (field) => {
+    if (!app || deleting) return;
+    setDeleting(field);
+    try {
+      const d = await api.del(`/customer/applications/${app.id}/documents/${field}`);
+      setApp(d.application);
+      setDocs((prev) => ({ ...prev, [field]: null }));
+      toast.success('Document removed.');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Could not remove the document.');
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -228,9 +291,8 @@ export default function Apply() {
       const saved = await saveStep(true, false);
       if (!saved) return;
       const d = await api.post(`/customer/applications/${app.id}/submit`, {});
-      setApp(d.application);
-      toast.success('Application submitted!');
-      navigate('/dashboard');
+      toast.success('Application saved. Continue to payment.');
+      navigate(`/payment/${d.application.id}`);
     } catch (err) {
       if (err instanceof ApiError) {
         setErrors(err.fields);
@@ -400,6 +462,52 @@ export default function Apply() {
           {step === 4 && (
             <div className="fade-up">
               <div className="alert alert-info">
+                Enter the bank account where the loan amount should be disbursed. These details are
+                used only in this demo and are never shared.
+              </div>
+              <div className="form-grid">
+                <Field
+                  label="Account holder name"
+                  name="accountHolderName"
+                  value={data.bank.accountHolderName}
+                  onChange={(e) => setField('bank', 'accountHolderName', e.target.value)}
+                  error={errors.accountHolderName}
+                  required
+                />
+                <Field
+                  label="Bank name"
+                  name="bankName"
+                  value={data.bank.bankName}
+                  onChange={(e) => setField('bank', 'bankName', e.target.value)}
+                  error={errors.bankName}
+                  required
+                />
+                <Field
+                  label="Account number"
+                  name="accountNumber"
+                  inputMode="numeric"
+                  value={data.bank.accountNumber}
+                  onChange={(e) => setField('bank', 'accountNumber', e.target.value)}
+                  error={errors.accountNumber}
+                  hint="4-20 digits"
+                  required
+                />
+                <Field
+                  label="IFSC code"
+                  name="ifsc"
+                  value={data.bank.ifsc}
+                  onChange={(e) => setField('bank', 'ifsc', e.target.value.toUpperCase())}
+                  error={errors.ifsc}
+                  hint="11 characters, e.g. HDFC0001234"
+                  required
+                />
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="fade-up">
+              <div className="alert alert-info">
                 Please upload clear scans or photos of your real documents — PAN, Aadhaar and a
                 recent photograph.
               </div>
@@ -427,21 +535,36 @@ export default function Apply() {
                         />
                       </label>
                       {uploaded && (
-                        <div className="row" style={{ marginTop: '0.4rem' }}>
+                        <div className="row" style={{ marginTop: '0.4rem', gap: '0.5rem' }}>
                           <span className="badge badge-done">Uploaded</span>
+                          {!docsLocked && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => removeDoc(doc.key)}
+                              disabled={deleting === doc.key}
+                            >
+                              <Trash2 size={14} />
+                              {deleting === doc.key ? 'Removing…' : 'Remove'}
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
                   );
                 })}
               </div>
-              <button className="btn btn-teal mt-2" onClick={uploadDocs} disabled={docBusy}>
+              <button
+                className="btn btn-teal mt-2"
+                onClick={uploadDocs}
+                disabled={docBusy || docsLocked}
+              >
                 <Upload size={16} /> {docBusy ? 'Uploading…' : 'Upload documents'}
               </button>
             </div>
           )}
 
-          {step === 5 && (
+          {step === 6 && (
             <div className="fade-up">
               <h3>Review your application</h3>
               <div className="form-grid" style={{ gap: '0.8rem' }}>
@@ -466,6 +589,15 @@ export default function Apply() {
                   <div className="text-sm text-muted">Plan {planCode} · {formatINR(data.loan.requestedAmount || 0)}</div>
                   <div className="text-sm text-muted">Purpose: {data.loan.purpose || '—'}</div>
                 </div>
+                <div className="card" style={{ padding: '1rem' }}>
+                  <strong>Bank account</strong>
+                  <div className="text-sm text-muted">{data.bank.accountHolderName || '—'}</div>
+                  <div className="text-sm text-muted">{data.bank.bankName || '—'}</div>
+                  <div className="text-sm text-muted">
+                    A/C {data.bank.accountNumber ? `XXXX${String(data.bank.accountNumber).replace(/\s+/g, '').slice(-4)}` : '—'}
+                    {' · '}IFSC {data.bank.ifsc || '—'}
+                  </div>
+                </div>
               </div>
               <div className="card mt-2" style={{ padding: '1rem' }}>
                 <strong>Documents</strong>
@@ -479,8 +611,9 @@ export default function Apply() {
                 {errors.documents && <div className="alert alert-error mt-2">{errors.documents}</div>}
               </div>
               <div className="alert alert-info mt-2 mb-0">
-                By submitting, you confirm the details above are accurate. Your application moves to{' '}
-                <strong>Submitted</strong> and you can follow every update on your dashboard.
+                By continuing, you confirm the details above are accurate. You'll be taken to the
+                secure checkout to pay the processing fee by UPI and activate{' '}
+                <strong>Plan {planCode}</strong>.
               </div>
             </div>
           )}
@@ -491,18 +624,18 @@ export default function Apply() {
               <ArrowLeft size={16} /> Back
             </button>
             <div className="row">
-              {step < 4 && (
+              {step < 5 && (
                 <button className="btn btn-soft" onClick={() => saveStep(false)} disabled={busy || locked}>
                   <Save size={16} /> Save & Continue
                 </button>
               )}
               {step < STEPS.length - 1 ? (
-                <button className="btn btn-teal" onClick={next} disabled={busy || (step === 4 && false)}>
+                <button className="btn btn-teal" onClick={next} disabled={busy}>
                   Continue <ArrowRight size={16} />
                 </button>
               ) : (
                 <button className="btn btn-teal" onClick={submitAll} disabled={busy || locked}>
-                  <CheckCircle2 size={16} /> {busy ? 'Submitting…' : 'Submit Application'}
+                  <ShieldCheck size={16} /> {busy ? 'Saving…' : `Pay & Activate Plan ${planCode}`}
                 </button>
               )}
             </div>

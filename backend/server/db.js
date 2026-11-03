@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import mysql from 'mysql2/promise';
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -144,6 +145,7 @@ CREATE TABLE IF NOT EXISTS applications (
   address JSON NULL,
   employment JSON NULL,
   loan JSON NULL,
+  bank JSON NULL,
   documents JSON NULL,
   internal_notes JSON NULL,
   history JSON NULL,
@@ -163,6 +165,7 @@ CREATE TABLE IF NOT EXISTS payments (
   plan_code VARCHAR(10) NULL,
   amount INT NOT NULL DEFAULT 0,
   method VARCHAR(60) NOT NULL DEFAULT 'UPI (Sandbox)',
+  utr VARCHAR(24) NULL,
   status VARCHAR(40) NOT NULL DEFAULT 'Completed',
   description VARCHAR(255) NULL,
   is_demo TINYINT(1) NOT NULL DEFAULT 1,
@@ -211,6 +214,18 @@ export async function initSchema() {
   for (const stmt of statements) {
     await pool.query(stmt);
   }
+  // Migrations for databases created before these columns existed.
+  const migrations = [
+    'ALTER TABLE applications ADD COLUMN bank JSON NULL',
+    'ALTER TABLE payments ADD COLUMN utr VARCHAR(24) NULL',
+  ];
+  for (const stmt of migrations) {
+    try {
+      await pool.query(stmt);
+    } catch (err) {
+      if (err?.errno !== 1060 && !/duplicate column/i.test(err?.message || '')) throw err;
+    }
+  }
 }
 
 /* ------------------------------- mappers --------------------------------- */
@@ -258,6 +273,7 @@ export const mapApplication = (r) =>
     address: fromJson(r.address, {}),
     employment: fromJson(r.employment, {}),
     loan: fromJson(r.loan, {}),
+    bank: fromJson(r.bank, {}),
     documents: fromJson(r.documents, { pan: { uploaded: false }, aadhaar: { uploaded: false }, photo: { uploaded: false } }),
     internalNotes: fromJson(r.internal_notes, []),
     history: fromJson(r.history, []),
@@ -275,6 +291,7 @@ export const mapPayment = (r) =>
     planCode: r.plan_code,
     amount: r.amount,
     method: r.method,
+    utr: r.utr,
     status: r.status,
     description: r.description,
     isDemo: Boolean(r.is_demo),
@@ -446,8 +463,8 @@ export async function insertApplication(app) {
   // 'PLACEHOLDER' makes concurrent creates collide with ER_DUP_ENTRY.
   const placeholder = `TMP-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const [result] = await query(
-    `INSERT INTO applications (ref_number, user_id, status, plan_code, personal, address, employment, loan, documents, internal_notes, history, submitted_at, is_demo, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO applications (ref_number, user_id, status, plan_code, personal, address, employment, loan, bank, documents, internal_notes, history, submitted_at, is_demo, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       placeholder,
       app.userId,
@@ -457,6 +474,7 @@ export async function insertApplication(app) {
       toJson(app.address ?? {}),
       toJson(app.employment ?? {}),
       toJson(app.loan ?? {}),
+      toJson(app.bank ?? {}),
       toJson(app.documents ?? {}),
       toJson(app.internalNotes ?? []),
       toJson(app.history ?? []),
@@ -519,7 +537,7 @@ export async function listApplications({ q = '', status = '' } = {}) {
 export async function updateApplication(id, patch) {
   const sets = [];
   const params = [];
-  const jsonCols = ['personal', 'address', 'employment', 'loan', 'documents', 'internal_notes', 'history'];
+  const jsonCols = ['personal', 'address', 'employment', 'loan', 'bank', 'documents', 'internal_notes', 'history'];
   const cols = {
     status: 'status',
     planCode: 'plan_code',
@@ -527,6 +545,7 @@ export async function updateApplication(id, patch) {
     address: 'address',
     employment: 'employment',
     loan: 'loan',
+    bank: 'bank',
     documents: 'documents',
     internalNotes: 'internal_notes',
     history: 'history',
@@ -550,9 +569,9 @@ export async function updateApplication(id, patch) {
 export async function insertPayment(p) {
   const t = now();
   const [result] = await query(
-    `INSERT INTO payments (user_id, application_id, plan_code, amount, method, status, description, is_demo, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-    [p.userId, p.applicationId ?? null, p.planCode ?? null, p.amount ?? 0, p.method ?? 'UPI (Sandbox)', p.status ?? 'Completed', p.description ?? '', t, t]
+    `INSERT INTO payments (user_id, application_id, plan_code, amount, method, utr, status, description, is_demo, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    [p.userId, p.applicationId ?? null, p.planCode ?? null, p.amount ?? 0, p.method ?? 'UPI (Sandbox)', p.utr ?? null, p.status ?? 'Completed', p.description ?? '', t, t]
   );
   return mapPayment(await one('SELECT * FROM payments WHERE id = ?', [result.insertId]));
 }

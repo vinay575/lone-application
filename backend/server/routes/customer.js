@@ -16,6 +16,7 @@ import {
   findUserById,
   updateUser,
   findPlanByCode,
+  one,
 } from '../db.js';
 import { requireAuth, validate } from '../middleware.js';
 
@@ -110,6 +111,7 @@ router.post('/applications', async (req, res) => {
       address: {},
       employment: {},
       loan: {},
+      bank: {},
       documents: { pan: { uploaded: false }, aadhaar: { uploaded: false }, photo: { uploaded: false } },
       internalNotes: [],
       history: [{ status: 'Draft', at: new Date().toISOString(), note: 'Draft created' }],
@@ -173,6 +175,17 @@ router.put('/applications/:id', async (req, res) => {
         })
       );
     }
+    if (body.bank) {
+      Object.assign(
+        errors,
+        validate(body.bank, {
+          accountHolderName: { required: true, message: 'Account holder name is required.' },
+          bankName: { required: true, message: 'Bank name is required.' },
+          accountNumber: { required: true, type: 'account' },
+          ifsc: { required: true, type: 'ifsc' },
+        })
+      );
+    }
     if (Object.keys(errors).length) {
       return res.status(400).json({ error: 'Please fix the highlighted fields.', fields: errors });
     }
@@ -182,6 +195,7 @@ router.put('/applications/:id', async (req, res) => {
     if (body.address) patch.address = { ...app.address, ...body.address };
     if (body.employment) patch.employment = { ...app.employment, ...body.employment };
     if (body.loan) patch.loan = { ...app.loan, ...body.loan };
+    if (body.bank) patch.bank = { ...app.bank, ...body.bank };
     if (typeof body.planCode === 'string' && ['A', 'B', 'C'].includes(body.planCode)) {
       patch.planCode = body.planCode;
     }
@@ -217,7 +231,13 @@ router.post('/applications/:id/submit', async (req, res) => {
         pincode: { required: true, type: 'pincode' },
       }),
       validate(app.employment, { type: { required: true }, monthlyIncome: { required: true } }),
-      validate(app.loan, { requestedAmount: { required: true }, purpose: { required: true } })
+      validate(app.loan, { requestedAmount: { required: true }, purpose: { required: true } }),
+      validate(app.bank || {}, {
+        accountHolderName: { required: true, message: 'Account holder name is required.' },
+        bankName: { required: true, message: 'Bank name is required.' },
+        accountNumber: { required: true, type: 'account' },
+        ifsc: { required: true, type: 'ifsc' },
+      })
     );
     const missingDocs = DOC_FIELDS.filter((f) => !app.documents?.[f]?.uploaded);
     if (missingDocs.length) {
@@ -286,17 +306,61 @@ router.post('/applications/:id/documents', (req, res, next) => {
   }
 });
 
+router.delete('/applications/:id/documents/:field', async (req, res) => {
+  try {
+    const { field } = req.params;
+    if (!DOC_FIELDS.includes(field)) {
+      return res.status(400).json({ error: 'Unknown document field.' });
+    }
+    const app = await ownedApplication(req);
+    if (!app) return res.status(404).json({ error: 'Application not found.' });
+    if (['Submitted', 'Under Review', 'Completed', 'Demo Completed'].includes(app.status)) {
+      return res.status(400).json({ error: 'Documents can only be changed while a draft is open.' });
+    }
+    const documents = { ...(app.documents || {}) };
+    const prev = documents[field];
+    if (!prev?.uploaded) {
+      return res.status(400).json({ error: 'That document has not been uploaded.' });
+    }
+    documents[field] = { uploaded: false };
+    if (prev.fileName) {
+      const filePath = path.join(UPLOAD_DIR, String(req.user.id), path.basename(prev.fileName));
+      if (fs.existsSync(filePath)) fs.rmSync(filePath, { force: true });
+    }
+    const updated = await updateApplication(app.id, { documents });
+    res.json({ application: sanitizeApplication(updated), removed: field });
+  } catch (err) {
+    console.error('document delete error', err);
+    res.status(500).json({ error: 'Could not remove the document.' });
+  }
+});
+
 /* -------------------------- Simulated payments --------------------------- */
 
 router.post('/payments/simulate', async (req, res) => {
   try {
-    const { applicationId, planCode } = req.body || {};
+    const { applicationId, planCode, utr } = req.body || {};
     const app = await findApplicationById(applicationId);
     if (!app || app.userId !== req.user.id) {
       return res.status(404).json({ error: 'Application not found.' });
     }
     const plan = await findPlanByCode(planCode || app.planCode);
     if (!plan) return res.status(400).json({ error: 'Selected plan is not available.' });
+
+    const utrStr = String(utr || '').trim();
+    if (!/^\d{9,16}$/.test(utrStr)) {
+      return res.status(400).json({
+        error: 'Enter the transaction reference (UTR) from your UPI app.',
+        fields: { utr: 'UTR is usually 9-16 digits, shown in your UPI app transaction details.' },
+      });
+    }
+    const used = await one('SELECT id FROM payments WHERE utr = ? LIMIT 1', [utrStr]);
+    if (used) {
+      return res.status(400).json({
+        error: 'This transaction reference has already been used.',
+        fields: { utr: 'Each payment needs its own unique UTR.' },
+      });
+    }
 
     const methodLabel = ['upi', 'netbanking', 'card'].includes(String(req.body?.method))
       ? { upi: 'UPI', netbanking: 'Net Banking', card: 'Card' }[String(req.body.method)]
@@ -308,6 +372,7 @@ router.post('/payments/simulate', async (req, res) => {
       planCode: plan.code,
       amount: plan.demoUnlockAmount,
       method: `${methodLabel} (Sandbox)`,
+      utr: utrStr,
       status: 'Completed',
       description: `Processing fee for ${plan.name}`,
     });

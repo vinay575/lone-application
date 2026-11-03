@@ -34,8 +34,12 @@ Add these in **Settings → Environment Variables** for Production and Preview:
 \* Required when the frontend is on a different domain. Example:
 
 ```env
-ALLOWED_ORIGINS=https://your-frontend.vercel.app,https://yourdomain.com
+ALLOWED_ORIGINS=https://lone-application-gray.vercel.app,https://yourdomain.com
 ```
+
+The frontend origin `https://lone-application-gray.vercel.app` is also allowed
+by default in `backend/server/app.js`, so CORS works even when the variable is
+not set. Add any other domains (for example a custom domain) here.
 
 Requests without an `Origin` header (curl, server-to-server) are allowed.
 

@@ -18,15 +18,25 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Restrict cross-origin API access to known frontends. Requests without an
 // Origin header (same-origin navigation, curl, mobile clients) are allowed.
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// Known deployment origins stay allowed even if ALLOWED_ORIGINS is omitted, so
+// a separate frontend project does not get blocked by CORS.
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://lone-application-gray.vercel.app',
+];
+const ALLOWED_ORIGINS = new Set([
+  ...DEFAULT_ALLOWED_ORIGINS,
+  ...(process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+]);
 
 const app = express();
 app.use(
   cors({
-    origin: (origin, cb) => cb(null, !origin || ALLOWED_ORIGINS.includes(origin)),
+    origin: (origin, cb) => cb(null, !origin || ALLOWED_ORIGINS.has(origin)),
   })
 );
 app.use(express.json({ limit: '1mb' }));

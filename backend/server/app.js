@@ -84,8 +84,8 @@ app.use('/api/customer', customerRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Serve the built React app (SPA) so the same origin handles both the UI and
-// /api. On Vercel the CDN serves frontend/dist and this block is skipped.
-const DIST_DIR = path.resolve(__dirname, process.env.FRONTEND_DIST || '../../frontend/dist');
+// /api. On Vercel the CDN serves dist/ and this block is skipped.
+const DIST_DIR = path.resolve(__dirname, process.env.FRONTEND_DIST || '../../dist');
 if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
   app.use((req, res, next) => {

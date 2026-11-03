@@ -44,7 +44,7 @@ or `cd backend && npm install && npm run dev`.
 | `npm run dev` | Backend + frontend together |
 | `npm run dev:server` | Express API only (`:3001`) |
 | `npm run dev:client` | Vite frontend only (`:5173`) |
-| `npm run build` | Production build to `frontend/dist/` |
+| `npm run build` | Production build to `dist/` (repository root) |
 | `npm run preview` | Preview the production build |
 | `npm run refresh` | Re-sync DB content (plans, FAQs, chatbot, wording) with the code |
 
@@ -118,7 +118,7 @@ Reference numbers use the `LN-YYYY-#####` format.
 
 - **Backend:** `backend/server/` — Express, `mysql2` pool with TLS, bcryptjs password hashing, JWT auth, multer uploads (local, 2 MB, image/pdf/txt). Uploads live in `backend/server/uploads/`.
 - **Frontend:** `frontend/src/` — React 18, React Router v7, lucide-react icons, hand-rolled design system in `frontend/src/index.css` (navy + teal, white background, responsive).
-- **Production:** `npm run build` outputs `frontend/dist/`; the Express server serves that build (and the API) from one origin. Override the location with `FRONTEND_DIST` if needed.
+- **Production:** `npm run build` outputs `dist/` at the repository root; the Express server serves that build (and the API) from one origin. Override the location with `FRONTEND_DIST` if needed.
 - **Security:** admin routes require the `admin` role server-side; ownership checks on all customer records; server-side validation on every form; no plaintext passwords; uploaded documents are stored on the application server only.
 - **Reset / refresh data:** `npm run refresh` re-syncs plans, FAQs, chatbot KB, settings and row wording with the code. To fully reset, drop/recreate the schema — schema, plans, FAQs, chatbot entries, sample users and admin are recreated on next start.
 

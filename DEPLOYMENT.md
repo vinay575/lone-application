@@ -1,8 +1,9 @@
 ## Deploying to Vercel
 
-The repo deploys as **one Vercel project**: `frontend/dist` is served from the
-CDN and every `/api/*` request is handled by a single catch-all Function that
-wraps the Express app (`api/[...path].js` → `backend/server/app.js`).
+The repo deploys as **one Vercel project**: the root `dist/` folder is served
+from the CDN and every `/api/*` request is handled by a single catch-all
+Function that wraps the Express app (`api/[...path].js` →
+`backend/server/app.js`).
 
 ### 1. Import the repository
 
@@ -11,7 +12,7 @@ wraps the Express app (`api/[...path].js` → `backend/server/app.js`).
 3. `vercel.json` already sets the framework, build command and output dir, so
    the defaults below are applied automatically:
    - Build Command: `npm run build`
-   - Output Directory: `frontend/dist`
+   - Output Directory: `dist`
    - Install Command: `npm install`
 4. Before the first deploy, open **Settings → Environment Variables** and add:
 

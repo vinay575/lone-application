@@ -1,4 +1,7 @@
-const BASE = '/api';
+// Same-origin API by default. When the frontend and backend are deployed as
+// separate projects, set VITE_API_URL to the backend's full API URL, e.g.
+// https://your-backend.vercel.app/api
+const BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
 
 export class ApiError extends Error {
   constructor(message, status, fields) {

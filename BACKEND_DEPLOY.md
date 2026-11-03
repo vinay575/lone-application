@@ -7,13 +7,15 @@ frontend is hosted separately (Vercel, Netlify, etc.).
 
 - **Root Directory:** `backend`
 - **Framework Preset:** Express
-- **Build Command:** leave empty (or disable the override)
+- **Build Command:** `npm run build` (safe no-op that validates syntax)
 - **Output Directory:** leave empty (or disable the override)
 - **Install Command:** `npm install`
 - **Node.js Version:** 22.x
 
 `backend/index.js` imports the Express app from `backend/server/app.js` and
 default-exports it, which is what Vercel's Express integration looks for.
+`backend/vercel.json` pins the framework to Express, and the backend's `build`
+script is a syntax check rather than a bundling step.
 
 ## Environment variables
 

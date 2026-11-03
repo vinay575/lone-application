@@ -5,6 +5,7 @@
   "type": "module",
   "description": "LoanLedger Express API (simulated payments, no live lending)",
   "scripts": {
+    "build": "node --check index.js && node --check server/app.js",
     "dev": "node server/index.js",
     "start": "node server/index.js",
     "seed": "node server/seed.js",
